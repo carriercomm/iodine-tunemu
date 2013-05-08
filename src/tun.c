@@ -28,6 +28,10 @@
 #define IFCONFIGPATH "PATH=/sbin:/bin "
 #endif
 
+#ifdef TUNEMU
+#include "tunemu.h"
+#endif
+
 #ifdef WINDOWS32
 #include <winsock2.h>
 #include <winioctl.h>
@@ -129,6 +133,34 @@ open_tun(const char *tun_device)
 
 #else /* BSD */
 
+#ifdef TUNEMU
+
+int 
+open_tun(const char *tun_device) 
+{
+	int fd;
+	tunemu_device tun_name;
+
+	if (tun_device != NULL)
+		snprintf(tun_name, sizeof(tunemu_device), "%s", tun_device);
+	else
+		tun_name[0] = 0;
+
+	fd = tunemu_open(tun_name);
+	if (fd < 0)
+	{
+		warn("open_tun: %s", tunemu_error);
+		return -1;
+	}
+
+	snprintf(if_name, sizeof(if_name), "%s", tun_name);
+	fprintf(stderr, "Opened %s\n", tun_name);
+
+	return fd;
+}
+
+#else /* TUNEMU */
+
 int 
 open_tun(const char *tun_device) 
 {
@@ -167,6 +199,8 @@ open_tun(const char *tun_device)
 
 	return -1;
 }
+
+#endif /* TUNEMU */
 
 #endif /* !LINUX */
 #else /* WINDOWS32 */
@@ -359,7 +393,11 @@ void
 close_tun(int tun_fd) 
 {
 	if (tun_fd >= 0)
+#ifdef TUNEMU
+		tunemu_close(tun_fd);
+#else
 		close(tun_fd);
+#endif
 }
 
 int 
@@ -383,7 +421,11 @@ write_tun(int tun_fd, char *data, size_t len)
 #endif /* FREEBSD */
 
 #ifndef WINDOWS32
+#ifdef TUNEMU
+	if (tunemu_write(tun_fd, data, len) != len) {
+#else
 	if (write(tun_fd, data, len) != len) {
+#endif
 		warn("write_tun");
 		return 1;
 	}
@@ -416,7 +458,9 @@ read_tun(int tun_fd, char *buf, size_t len)
 	/* FreeBSD/Darwin/NetBSD has no header */
 	int bytes;
 	memset(buf, 0, 4);
-#ifdef WINDOWS32
+#ifdef TUNEMU
+	bytes = tunemu_read(tun_fd, buf + 4, len - 4);
+#elif WINDOWS32
 	/* Windows needs recv() since it is local UDP socket */
 	bytes = recv(tun_fd, buf + 4, len - 4, 0);
 #else
