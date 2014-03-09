@@ -32,6 +32,7 @@
 #else
 #include <grp.h>
 #include <pwd.h>
+#include <netdb.h>
 #endif
 
 #include "common.h"
@@ -101,12 +102,9 @@ help() {
 
 static void
 version() {
-	char *svnver;
-
-	svnver = "$Rev$ from $Date$";
 
 	fprintf(stderr, "iodine IP over DNS tunneling client\n");
-	fprintf(stderr, "SVN version: %s\n", svnver);
+	fprintf(stderr, "Git version: %s\n", GITREVISION);
 
 	exit(0);
 }
@@ -114,7 +112,7 @@ version() {
 int
 main(int argc, char **argv)
 {
-	char *nameserv_addr;
+	char *nameserv_host;
 	char *topdomain;
 #ifndef WINDOWS32
 	struct passwd *pw;
@@ -137,8 +135,11 @@ main(int argc, char **argv)
 	int selecttimeout;
 	int hostname_maxlen;
 	int rtable = 0;
+	struct sockaddr_storage nameservaddr;
+	int nameservaddr_len;
+	int nameserv_family;
 
-	nameserv_addr = NULL;
+	nameserv_host = NULL;
 	topdomain = NULL;
 #ifndef WINDOWS32
 	pw = NULL;
@@ -159,6 +160,7 @@ main(int argc, char **argv)
 	lazymode = 1;
 	selecttimeout = 4;
 	hostname_maxlen = 0xFF;
+	nameserv_family = AF_UNSPEC;
 
 #ifdef WINDOWS32
 	WSAStartup(req_version, &wsa_data);
@@ -175,8 +177,14 @@ main(int argc, char **argv)
 		__progname++;
 #endif
 
-	while ((choice = getopt(argc, argv, "vfhru:t:d:R:P:m:M:F:T:O:L:I:")) != -1) {
+	while ((choice = getopt(argc, argv, "46vfhru:t:d:R:P:m:M:F:T:O:L:I:")) != -1) {
 		switch(choice) {
+		case '4':
+			nameserv_family = AF_INET;
+			break;
+		case '6':
+			nameserv_family = AF_INET6;
+			break;
 		case 'v':
 			version();
 			/* NOTREACHED */
@@ -260,11 +268,11 @@ main(int argc, char **argv)
 
 	switch (argc) {
 	case 1:
-		nameserv_addr = get_resolvconf_addr();
+		nameserv_host = get_resolvconf_addr();
 		topdomain = strdup(argv[0]);
 		break;
 	case 2:
-		nameserv_addr = argv[0];
+		nameserv_host = argv[0];
 		topdomain = strdup(argv[1]);
 		break;
 	default:
@@ -278,8 +286,13 @@ main(int argc, char **argv)
 		/* NOTREACHED */
 	}
 
-	if (nameserv_addr) {
-		client_set_nameserver(nameserv_addr, DNS_PORT);
+	if (nameserv_host) {
+		nameservaddr_len = get_addr(nameserv_host, DNS_PORT, nameserv_family, 0, &nameservaddr);
+		if (nameservaddr_len < 0) {
+			errx(1, "Cannot lookup nameserver '%s': %s ",
+				nameserv_host, gai_strerror(nameservaddr_len));
+		}
+		client_set_nameserver(&nameservaddr, nameservaddr_len);
 	} else {
 		warnx("No nameserver found - not connected to any network?\n");
 		usage();
@@ -326,20 +339,22 @@ main(int argc, char **argv)
 		retval = 1;
 		goto cleanup1;
 	}
-	if ((dns_fd = open_dns(0, INADDR_ANY)) == -1) {
+	if ((dns_fd = open_dns_from_host(NULL, 53, nameservaddr.ss_family, AI_PASSIVE)) < 0) {
 		retval = 1;
 		goto cleanup2;
 	}
 #ifdef OPENBSD
 	if (rtable > 0)
 		socket_setrtable(dns_fd, rtable);
+#else
+	(void) rtable;
 #endif
 
 	signal(SIGINT, sighandler);
 	signal(SIGTERM, sighandler);
 
 	fprintf(stderr, "Sending DNS queries for %s to %s\n",
-		topdomain, nameserv_addr);
+		topdomain, format_addr(&nameservaddr, nameservaddr_len));
 
 	if (client_handshake(dns_fd, raw_mode, autodetect_frag_size, max_downstream_frag_size)) {
 		retval = 1;

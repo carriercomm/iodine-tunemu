@@ -7,7 +7,7 @@ iodine, iodined \- tunnel IPv4 over DNS
 
 .B iodine [-h]
 
-.B iodine [-f] [-r] [-u
+.B iodine [-4] [-6] [-f] [-r] [-u
 .I user
 .B ] [-P
 .I password
@@ -71,6 +71,8 @@ iodine, iodined \- tunnel IPv4 over DNS
 .I context
 .B ] [-F
 .I pidfile
+.B ] [-i
+.I max_idle_time
 .B ]
 .I tunnel_ip
 .B [
@@ -129,6 +131,12 @@ Apply SELinux 'context' after initialization.
 .B -F pidfile
 Create 'pidfile' and write process id in it.
 .SS Client Options:
+.TP
+.B -4
+Force IPv4 DNS queries
+.TP
+.B -6
+Force IPv6 DNS queries
 .TP
 .B -r
 Skip raw UDP mode. If not used, iodine will try getting the public IP address
@@ -278,13 +286,17 @@ same as 'port'.
 .B Note:
 The forwarding is not fully transparent, and not advised for use
 in production environments.
+.TP
+.B -i max_idle_time
+Make the server stop itself after max_idle_time seconds if no traffic have been received.
+This should be combined with systemd or upstart on demand activation for being effective.
 .SS Client Arguments:
 .TP
 .B nameserver
 The nameserver to use to relay the dns traffic. This can be any relaying
 nameserver or the server running iodined if reachable. This field can be
-given as an IP address, or as a hostname. This argument is optional, and 
-if not specified a nameserver will be read from the
+given as an IPv4/IPv6 address or as a hostname. This argument is optional,
+and if not specified a nameserver will be read from the
 .I /etc/resolv.conf
 file.
 .TP

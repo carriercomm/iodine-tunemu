@@ -19,9 +19,9 @@
 
 typedef unsigned int in_addr_t;
 
+#include <winsock2.h>
 #include <windows.h>
 #include <windns.h>
-#include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 
@@ -94,7 +94,8 @@ DWORD WINAPI tun_reader(LPVOID arg);
 struct tun_data {
 	HANDLE tun;
 	int sock;
-	struct sockaddr_in addr;
+	struct sockaddr_storage addr;
+	int addrlen;
 };
 
 #endif
